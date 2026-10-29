@@ -58,6 +58,10 @@ input[type="text"],input[type="date"]{width:100%;min-height:46px;border:1px soli
 .bar{display:flex;flex-wrap:wrap;gap:10px}
 .out{display:grid;gap:12px;justify-items:start}
 .out canvas{width:100%;max-width:980px;height:auto;border-radius:12px;background:var(--stage);display:block}
+.opts{display:grid;gap:6px}
+.info{font-size:14px;color:var(--muted)}
+.info:empty{display:none}
+.drop canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .msg{font-size:14px;color:var(--warn)}
 .msg:empty{display:none}
 .note{font-size:13px;color:var(--muted)}
@@ -85,7 +89,11 @@ input[type="text"],input[type="date"]{width:100%;min-height:46px;border:1px soli
     </div>
   </section>
 
-  <label class="chk"><input type="checkbox" id="lines"> Показать линии: центр и уровень зрачков</label>
+  <div class="opts">
+    <label class="chk"><input type="checkbox" id="lines"> Показать линии: центр лица и уровень зрачков</label>
+    <label class="chk"><input type="checkbox" id="auto"> Выровнять фото автоматически по глазам (если фото не из «Селфи-помощника»)</label>
+  </div>
+  <p class="info" id="info" role="status"></p>
 
   <div class="bar">
     <button class="btn" id="btnSwap" type="button">Поменять местами</button>
@@ -99,26 +107,126 @@ input[type="text"],input[type="date"]{width:100%;min-height:46px;border:1px soli
     <p class="note">Если скачивание не сработало, нажми на коллаж правой кнопкой и выбери «Сохранить изображение как».</p>
   </section>
 </main>
+<script src="vendor/face-api.js"></script>
 <script>
 (function(){
 'use strict';
 const $=id=>document.getElementById(id);
-const OW=768,OH=1024,CXL=384,EY=410,GAP=12,W=OW*2+GAP,H=OH;
+const OW=768,OH=1024,CXL=384,EY=410,DX=92,GAP=12,W=OW*2+GAP,H=OH;
 const S={a:null,b:null};
 const LABEL={a:'Нажми или перетащи сюда старое фото',b:'Нажми или перетащи сюда новое фото'};
+const FA=window.faceapi;
+let modelsState='idle',modelsPromise=null,token=0;
 
-function loadFile(file,slot){
-  if(!file)return;
-  const url=URL.createObjectURL(file),img=new Image();
-  img.onload=()=>{S[slot]={img:img,url:url};$('msg').textContent='';paintDrop(slot);update();};
-  img.onerror=()=>{URL.revokeObjectURL(url);$('msg').textContent='Не удалось открыть файл. Выбери фото в формате JPG или PNG.';};
-  img.src=url;
+/* ---------- модель лица ---------- */
+function loadModels(){
+  if(modelsPromise)return modelsPromise;
+  if(!FA){modelsState='failed';modelsPromise=Promise.resolve();return modelsPromise;}
+  modelsState='loading';
+  modelsPromise=(async()=>{
+    try{
+      try{await FA.tf.setBackend('webgl');}catch(e){await FA.tf.setBackend('cpu');}
+      await FA.tf.ready();
+      await FA.nets.tinyFaceDetector.loadFromUri('./model');
+      await FA.nets.faceLandmark68Net.loadFromUri('./model');
+      modelsState='ready';
+    }catch(e){modelsState='failed';}
+  })();
+  return modelsPromise;
+}
+async function findEyes(img){
+  await loadModels();
+  if(modelsState!=='ready')return null;
+  const k=Math.min(1,900/Math.max(img.naturalWidth,img.naturalHeight));
+  const c=document.createElement('canvas');c.width=Math.round(img.naturalWidth*k);c.height=Math.round(img.naturalHeight*k);
+  c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  const det=await FA.detectSingleFace(c,new FA.TinyFaceDetectorOptions({inputSize:416,scoreThreshold:0.4})).withFaceLandmarks();
+  if(!det)return null;
+  const P=det.landmarks.positions;
+  const mean=(a,b)=>{let x=0,y=0;for(let i=a;i<=b;i++){x+=P[i].x;y+=P[i].y;}const n=b-a+1;return{x:x/n/k,y:y/n/k};};
+  let l=mean(36,41),r=mean(42,47);
+  if(l.x>r.x){const t=l;l=r;r=t;}
+  return{l:l,r:r};
+}
+function alignImage(img,p1,p2){
+  const t1={x:CXL-DX,y:EY};
+  const dsx=p2.x-p1.x,dsy=p2.y-p1.y,s=(2*DX)/Math.hypot(dsx,dsy),ang=-Math.atan2(dsy,dsx);
+  const C=Math.cos(ang)*s,SN=Math.sin(ang)*s;
+  const tx=t1.x-(C*p1.x-SN*p1.y),ty=t1.y-(SN*p1.x+C*p1.y);
+  const cv=document.createElement('canvas');cv.width=OW;cv.height=OH;
+  const ctx=cv.getContext('2d');ctx.fillStyle='#7d8a91';ctx.fillRect(0,0,OW,OH);
+  ctx.imageSmoothingQuality='high';ctx.setTransform(C,SN,-SN,C,tx,ty);ctx.drawImage(img,0,0);
+  return cv;
+}
+
+/* ---------- рисование ---------- */
+function drawCover(ctx,src,x,y,w,h){
+  const sw=src.naturalWidth||src.width,sh=src.naturalHeight||src.height;
+  const k=Math.max(w/sw,h/sh),dw=sw*k,dh=sh*k;
+  ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();
+  ctx.imageSmoothingQuality='high';ctx.drawImage(src,x+(w-dw)/2,y+(h-dh)/2,dw,dh);ctx.restore();
+}
+function drawLines(ctx,x,y){
+  ctx.save();ctx.beginPath();ctx.rect(x,y,OW,OH);ctx.clip();
+  const seg=(x1,y1,x2,y2,col)=>{
+    [['rgba(0,0,0,.55)',7],[col,3]].forEach(s=>{ctx.setLineDash([16,10]);ctx.strokeStyle=s[0];ctx.lineWidth=s[1];ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();});
+  };
+  seg(x+CXL,y,x+CXL,y+OH,'#FFFFFF');
+  seg(x,y+EY,x+OW,y+EY,'#FFC247');
+  ctx.restore();
+}
+function source(s){return s?(s.aligned||s.img):null;}
+function drawSlot(ctx,s,x,y){
+  ctx.fillStyle='#1C2830';ctx.fillRect(x,y,OW,OH);
+  const src=source(s);
+  if(src){drawCover(ctx,src,x,y,OW,OH);if($('lines').checked)drawLines(ctx,x,y);}
 }
 function paintDrop(slot){
   const d=$(slot==='a'?'dropA':'dropB'),s=S[slot];
   if(!s){d.className='drop';d.textContent=LABEL[slot];return;}
   d.className='drop has';d.innerHTML='';
-  const i=document.createElement('img');i.src=s.url;i.alt=slot==='a'?'Старое фото':'Новое фото';d.appendChild(i);
+  const c=document.createElement('canvas');c.width=OW;c.height=OH;
+  c.setAttribute('role','img');c.setAttribute('aria-label',slot==='a'?'Старое фото':'Новое фото');
+  drawSlot(c.getContext('2d'),s,0,0);d.appendChild(c);
+}
+function render(){
+  const ctx=$('cv').getContext('2d');
+  ctx.fillStyle='#10181D';ctx.fillRect(0,0,W,H);
+  drawSlot(ctx,S.a,0,0);drawSlot(ctx,S.b,OW+GAP,0);
+}
+
+/* ---------- состояние ---------- */
+async function prepare(){
+  const my=++token;
+  const info=$('info');info.textContent='';
+  const failed=[];
+  for(const slot of ['a','b']){
+    const s=S[slot];if(!s)continue;
+    if($('auto').checked){
+      if(s.tried===undefined){
+        info.textContent='Ищу лицо…';
+        let eyes=null;try{eyes=await findEyes(s.img);}catch(e){eyes=null;}
+        if(my!==token)return;
+        s.tried=true;s.aligned=eyes?alignImage(s.img,eyes.l,eyes.r):null;
+      }
+      if(!s.aligned)failed.push(slot==='a'?'старом':'новом');
+    }
+  }
+  if($('auto').checked){
+    if(modelsState==='failed')info.textContent='Модель лица не загрузилась. Фото показаны как есть.';
+    else info.textContent=failed.length?'Лицо не найдено на '+failed.join(' и ')+' фото, оно показано как есть.':'';
+  }
+  paintDrop('a');paintDrop('b');
+  $('btnSave').disabled=!(S.a&&S.b);
+  $('out').hidden=!(S.a||S.b);
+  if(S.a||S.b)render();
+}
+function loadFile(file,slot){
+  if(!file)return;
+  const url=URL.createObjectURL(file),img=new Image();
+  img.onload=()=>{S[slot]={img:img,url:url,aligned:null};$('msg').textContent='';prepare();};
+  img.onerror=()=>{URL.revokeObjectURL(url);$('msg').textContent='Не удалось открыть файл. Выбери фото в формате JPG или PNG.';};
+  img.src=url;
 }
 [['a','dropA','fileA'],['b','dropB','fileB']].forEach(t=>{
   const drop=$(t[1]),inp=$(t[2]);
@@ -129,38 +237,9 @@ function paintDrop(slot){
   drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
   drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');loadFile(e.dataTransfer.files&&e.dataTransfer.files[0],t[0]);});
 });
-
-function drawCover(ctx,img,x,y,w,h){
-  const k=Math.max(w/img.naturalWidth,h/img.naturalHeight),dw=img.naturalWidth*k,dh=img.naturalHeight*k;
-  ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();
-  ctx.imageSmoothingQuality='high';ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);ctx.restore();
-}
-function drawLines(ctx,x,y){
-  ctx.save();ctx.beginPath();ctx.rect(x,y,OW,OH);ctx.clip();
-  ctx.setLineDash([10,10]);
-  [['rgba(0,0,0,.4)',4],['rgba(255,255,255,.92)',1.5]].forEach(s=>{
-    ctx.strokeStyle=s[0];ctx.lineWidth=s[1];ctx.beginPath();
-    ctx.moveTo(x+CXL,y);ctx.lineTo(x+CXL,y+OH);ctx.moveTo(x,y+EY);ctx.lineTo(x+OW,y+EY);ctx.stroke();
-  });
-  ctx.restore();
-}
-function render(){
-  const ctx=$('cv').getContext('2d');
-  ctx.fillStyle='#10181D';ctx.fillRect(0,0,W,H);
-  [[S.a,0],[S.b,OW+GAP]].forEach(t=>{
-    ctx.fillStyle='#1C2830';ctx.fillRect(t[1],0,OW,OH);
-    if(t[0]){drawCover(ctx,t[0].img,t[1],0,OW,OH);if($('lines').checked)drawLines(ctx,t[1],0);}
-  });
-}
-function update(){
-  $('btnSave').disabled=!(S.a&&S.b);
-  $('out').hidden=!(S.a||S.b);
-  if(S.a||S.b)render();
-}
-$('lines').addEventListener('change',update);
-$('btnSwap').addEventListener('click',()=>{
-  const t=S.a;S.a=S.b;S.b=t;paintDrop('a');paintDrop('b');update();
-});
+$('lines').addEventListener('change',prepare);
+$('auto').addEventListener('change',prepare);
+$('btnSwap').addEventListener('click',()=>{const t=S.a;S.a=S.b;S.b=t;prepare();});
 $('btnSave').addEventListener('click',()=>{
   render();
   $('cv').toBlob(b=>{
