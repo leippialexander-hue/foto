@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Фото на паспорт</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@500&family=Unbounded:wght@600&display=swap">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+/* Layout: одна колонка, три вкладки (Снимок / Сравнение / Архив). Кадр 3:4, зрачки всегда на одной линии. */
+:root{
+  --bg:#EEF1F2; --surface:#FFFFFF; --ink:#16212A; --muted:#5A6A74; --line:#D3DADE;
+  --accent:#0E5C73; --accent-ink:#FFFFFF; --mark:#E8335A; --mark2:#FFC247; --stage:#DCE2E5; --warn:#B3261E; --ok:#1B8A4B;
+  --f-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --f-body:"Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1519; --surface:#16212A; --ink:#E6EDF0; --muted:#92A4AE; --line:#2A3944;
+    --accent:#5CC3DD; --accent-ink:#04202A; --mark:#FF6B87; --stage:#0A1013; --warn:#FF8F85; --ok:#5FD08A;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1519; --surface:#16212A; --ink:#E6EDF0; --muted:#92A4AE; --line:#2A3944;
+  --accent:#5CC3DD; --accent-ink:#04202A; --mark:#FF6B87; --stage:#0A1013; --warn:#FF8F85; --ok:#5FD08A;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--f-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-top:max(20px,env(safe-area-inset-top,0px));
+  padding-bottom:calc(48px + env(safe-area-inset-bottom,0px));
+}
+[hidden]{display:none!important}
+.app{max-width:560px;margin:0 auto;display:grid;gap:18px}
+.eyebrow{font:500 11px/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{font:600 26px/1.15 var(--f-display);letter-spacing:-.01em;margin:10px 0 8px;text-wrap:balance}
+h2{font:500 12px/1.2 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+p{margin:0}
+.lede{color:var(--muted);max-width:46ch}
+.status{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.pill{font:500 12px/1 var(--f-mono);padding:8px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--line);color:var(--ink)}
+.pill.due{border-color:var(--accent);color:var(--accent)}
+.pill.late,.pill.warn{border-color:var(--warn);color:var(--warn)}
+
+button,input,select{font-family:inherit}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.tabs button{min-height:44px;border:0;border-radius:9px;background:transparent;color:var(--muted);font:600 14px var(--f-body);cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+
+.btn{min-height:48px;padding:0 18px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 15px var(--f-body);cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.ghost{background:transparent}
+.btn.small{min-height:40px;padding:0 12px;font-size:14px}
+.btn.danger{border-color:var(--warn);color:var(--warn)}
+.btn:disabled{opacity:.45;cursor:default}
+.actions{display:grid;gap:10px}
+.actions.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.msg{font-size:14px;color:var(--warn)}
+.msg:empty{display:none}
+.info{font-size:14px;color:var(--muted)}
+.info:empty{display:none}
+.hint{font-size:15px;min-height:1.5em}
+
+.start-grid{display:grid;grid-template-columns:minmax(0,170px) minmax(0,1fr);gap:16px;align-items:start}
+.tplbox{position:relative;aspect-ratio:3/4;border-radius:12px;background:var(--stage);overflow:hidden}
+.how{margin:0;padding-left:20px;display:grid;gap:10px;font-size:14px;color:var(--muted)}
+.how li::marker{font-family:var(--f-mono);color:var(--accent)}
+.tips{border-top:1px solid var(--line);padding-top:16px}
+.tips ul{margin:0;padding-left:18px;display:grid;gap:6px;font-size:14px;color:var(--muted)}
+#ph-start,#ph-cam,#ph-mark,#ph-result{display:grid;gap:16px}
+
+/* камера */
+.camhint{min-height:56px;display:flex;align-items:center;justify-content:center;text-align:center;padding:10px 14px;border-radius:12px;background:var(--surface);border:2px solid var(--line);font:600 18px/1.25 var(--f-body);text-wrap:balance}
+.camhint.ok{border-color:var(--ok);color:var(--ok)}
+.camhint.bad{border-color:var(--mark)}
+.camframe{position:relative;width:100%;max-width:400px;margin-inline:auto;aspect-ratio:3/4;border-radius:14px;overflow:hidden;background:#000}
+.camframe video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.camframe .gwrap{position:absolute;inset:0;pointer-events:none}
+.live .d{fill:var(--mark);stroke:#fff;stroke-width:2px}
+.live .d.ok{fill:var(--ok)}
+.busy{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.55);color:#fff;font-weight:600;text-align:center;padding:20px}
+
+.steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.step{padding:9px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.step b{font:500 12px var(--f-mono)}
+.step.active{border-color:var(--mark);color:var(--ink)}
+.step.done{border-color:var(--accent);color:var(--accent)}
+.stage{position:relative;display:flex;justify-content:center;background:var(--stage);border-radius:14px;overflow:hidden;touch-action:none}
+.mkwrap{position:relative;display:inline-block;line-height:0}
+.mkwrap canvas{display:block;cursor:crosshair;max-width:none}
+.pm{position:absolute;display:none;width:34px;height:34px;margin:-17px 0 0 -17px;border:2px solid var(--mark);border-radius:50%;pointer-events:none;box-shadow:0 0 0 1.5px rgba(0,0,0,.35)}
+.pm::before,.pm::after{content:"";position:absolute;background:var(--mark)}
+.pm::before{left:50%;top:-7px;bottom:-7px;width:1.5px;margin-left:-.75px}
+.pm::after{top:50%;left:-7px;right:-7px;height:1.5px;margin-top:-.75px}
+.loupe{position:absolute;top:10px;width:112px;height:112px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,.4);background:#000;display:none;pointer-events:none}
+.loupe.l{left:10px}.loupe.r{right:10px}
+
+.result{display:grid;gap:14px}
+.frame{position:relative;width:100%;max-width:360px;margin-inline:auto;aspect-ratio:3/4;border-radius:14px;overflow:hidden;background:var(--stage)}
+.frame canvas{display:block;width:100%;height:100%}
+.gwrap{position:absolute;inset:0;pointer-events:none}
+.guides{display:block;width:100%;height:100%;overflow:visible}
+.guides *{vector-effect:non-scaling-stroke}
+.guides line,.guides circle,.guides ellipse,.guides path{fill:none}
+.guides .l{stroke-width:1.5px}
+.guides .u{stroke-width:3.5px}
+.g-photo .l{stroke:rgba(255,255,255,.92)}
+.g-photo .u{stroke:rgba(0,0,0,.38)}
+.g-photo .l.mk{stroke:var(--mark)}
+.g-photo .l.hl{stroke:var(--mark2)}
+.g-photo .ov{stroke:rgba(255,255,255,.6)}
+.g-photo text{fill:#fff;stroke:rgba(0,0,0,.55);stroke-width:3px;paint-order:stroke}
+.g-plain .u{display:none}
+.g-plain .l{stroke:var(--muted)}
+.g-plain .l.mk{stroke:var(--mark)}
+.g-plain .ov{stroke:var(--muted)}
+.g-plain .sil{stroke:var(--line);stroke-width:3px}
+.g-plain text{fill:var(--muted)}
+.guides text{font:500 26px var(--f-body);stroke-linejoin:round}
+.row2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.fld{display:grid;gap:6px;min-width:0}
+.fld>span{font:500 11px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+input[type="text"],input[type="date"],select{width:100%;min-height:46px;border:1px solid var(--line);border-radius:10px;padding:0 12px;background:var(--surface);color:var(--ink);font-size:16px}
+.chk{display:flex;gap:10px;align-items:center;font-size:15px;min-height:32px}
+.chk input{width:20px;height:20px;accent-color:var(--accent)}
+input[type="range"]{width:100%;accent-color:var(--accent)}
+
+.seg{display:inline-grid;grid-auto-flow:column;gap:4px;padding:4px;background:var(--surface);border:1px solid var(--line);border-radius:10px;justify-self:start}
+.seg button{min-height:38px;padding:0 14px;border:0;border-radius:7px;background:transparent;color:var(--muted);font:600 14px var(--f-body);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+#cmpBody,#arcBody{display:grid;gap:16px}
+.cmp-stage{position:relative;width:100%;max-width:420px;margin-inline:auto;aspect-ratio:3/4;border-radius:14px;overflow:hidden;background:#000;touch-action:pan-y;user-select:none;-webkit-user-select:none;--p:50%}
+.ci{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;-webkit-user-drag:none}
+.after{position:absolute;inset:0;clip-path:inset(0 0 0 var(--p))}
+.divider{position:absolute;top:0;bottom:0;left:var(--p);width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.knob{position:absolute;top:50%;left:50%;width:36px;height:36px;margin:-18px;border-radius:50%;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.45);display:grid;place-items:center;color:#16212A;font:600 13px var(--f-mono)}
+.tag{position:absolute;top:10px;font:500 11px/1 var(--f-mono);padding:6px 8px;border-radius:6px;background:rgba(0,0,0,.6);color:#fff;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tag.tl{left:10px}.tag.tr{right:10px}.tag.bl{top:auto;bottom:8px;left:8px}
+.side{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.cell{position:relative;margin:0;aspect-ratio:3/4;border-radius:12px;overflow:hidden;background:#000}
+.meta{font:500 12px var(--f-mono);color:var(--muted)}
+.opts{display:grid;gap:8px}
+.empty{border:1px dashed var(--line);border-radius:14px;padding:22px;color:var(--muted);display:grid;gap:14px;justify-items:start}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 14px}
+@media (min-width:520px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.card{display:grid;gap:8px;align-content:start;min-width:0}
+.card img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;display:block;background:var(--stage);cursor:zoom-in}
+.card .ttl{font-weight:600;font-size:15px;overflow-wrap:anywhere}
+.card .btns{display:grid;gap:6px}
+.note{font-size:13px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+.viewer{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.94);display:grid;grid-template-rows:minmax(0,1fr) auto;gap:12px;padding:max(16px,env(safe-area-inset-top,0px)) 16px max(16px,env(safe-area-inset-bottom,0px))}
+.viewer img{width:100%;height:100%;object-fit:contain;min-height:0;-webkit-touch-callout:default;user-select:auto}
+.viewer p{color:#cfd8dc;font-size:14px;text-align:center}
+.viewer .btn{background:#fff;color:#16212A;border-color:#fff}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:max-content;max-width:calc(100% - 32px);background:var(--ink);color:var(--bg);padding:12px 16px;border-radius:10px;font-size:14px;z-index:40}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<main class="app" id="app">
+  <header>
+    <div class="eyebrow">Проект · овал лица</div>
+    <h1>Фото на паспорт</h1>
+    <p class="lede">Один и тот же ракурс каждую неделю, чтобы честно сравнивать изменения на лице.</p>
+    <div class="status" id="status"></div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Разделы">
+    <button role="tab" data-tab="shoot" aria-selected="true">Снимок</button>
+    <button role="tab" data-tab="compare" aria-selected="false">Сравнение</button>
+    <button role="tab" data-tab="archive" aria-selected="false">Архив</button>
+  </nav>
+
+  <section id="tab-shoot" role="tabpanel">
+    <div id="ph-start">
+      <div class="start-grid">
+        <div class="tplbox" id="tpl"></div>
+        <ol class="how">
+          <li>Включи камеру и поставь лицо в овал. Приложение подскажет, куда сдвинуться.</li>
+          <li>Когда поза совпала, снимок делается сам.</li>
+          <li>Зрачки встают на одну линию, масштаб и наклон выравниваются.</li>
+        </ol>
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="btnCam" type="button">Включить камеру</button>
+        <button class="btn" id="btnNative" type="button">Снять в приложении камеры</button>
+        <button class="btn ghost" id="btnGal" type="button">Выбрать из галереи</button>
+      </div>
+      <p class="info" id="modelInfo"></p>
+      <p class="msg" id="startMsg" role="status"></p>
+      <input type="file" id="inCam" accept="image/*" capture="user" hidden>
+      <input type="file" id="inGal" accept="image/*" hidden>
+      <div class="tips">
+        <h2>Условия съёмки</h2>
+        <ul>
+          <li>То же место и свет: лицом к окну, в то же время суток. Без вспышки.</li>
+          <li>Камера на уровне глаз. Не снизу и не сверху.</li>
+          <li>Подбородок параллельно полу, взгляд в камеру, рот закрыт, без улыбки.</li>
+          <li>Волосы убраны, шея открыта до ключиц.</li>
+          <li>Выключи «красоту» и сглаживание кожи, если используешь камеру телефона.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="ph-cam" hidden>
+      <div class="camhint" id="camHint" role="status">Запускаю камеру…</div>
+      <div class="camframe" id="camFrame">
+        <video id="vid" playsinline muted autoplay></video>
+        <div class="gwrap" id="camG"></div>
+        <div class="gwrap live" id="liveG"></div>
+        <div class="busy" id="camBusy" hidden></div>
+      </div>
+      <div class="actions two">
+        <button class="btn" id="btnCamCancel" type="button">Отмена</button>
+        <button class="btn primary" id="btnShot" type="button">Снять сейчас</button>
+      </div>
+    </div>
+
+    <div id="ph-mark" hidden>
+      <div class="steps">
+        <div class="step" id="st0"><b>1</b> Левый зрачок</div>
+        <div class="step" id="st1"><b>2</b> Правый зрачок</div>
+      </div>
+      <p class="hint" id="mkHint"></p>
+      <div class="stage" id="mkStage">
+        <div class="mkwrap" id="mkWrap">
+          <canvas id="mk"></canvas>
+          <i class="pm" id="pm0"></i><i class="pm" id="pm1"></i>
+        </div>
+        <canvas class="loupe" id="loupe" width="224" height="224"></canvas>
+      </div>
+      <p class="msg" id="mkMsg" role="status"></p>
+      <div class="actions two">
+        <button class="btn" id="btnReset" type="button">Сбросить точки</button>
+        <button class="btn primary" id="btnAlign" type="button" disabled>Выровнять</button>
+      </div>
+      <button class="btn ghost" id="btnOther" type="button">Другое фото</button>
+    </div>
+
+    <div id="ph-result" hidden>
+      <div class="result">
+        <div class="frame"><canvas id="resCv" width="768" height="1024"></canvas><div class="gwrap" id="resG"></div></div>
+        <p class="msg" id="resWarn" role="status"></p>
+        <p class="info" id="resInfo"></p>
+        <label class="chk"><input type="checkbox" id="showLines" checked> Показать линии</label>
+        <div class="row2">
+          <label class="fld"><span>Дата</span><input type="date" id="fDate"></label>
+          <label class="fld"><span>Подпись</span><input type="text" id="fLabel" maxlength="40"></label>
+        </div>
+        <div class="actions two">
+          <button class="btn" id="btnBack" type="button">Уточнить точки</button>
+          <button class="btn primary" id="btnSave" type="button">Сохранить снимок</button>
+        </div>
+        <button class="btn ghost" id="btnRetake" type="button">Переснять</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-compare" role="tabpanel" hidden><div id="cmpBody"></div></section>
+  <section id="tab-archive" role="tabpanel" hidden><div id="arcBody"></div></section>
+</main>
+<div class="viewer" id="viewer" hidden>
+  <img id="viewerImg" alt="Снимок">
+  <div class="actions">
+    <p>Удерживай фото, чтобы сохранить его в галерею.</p>
+    <button class="btn" id="viewerClose" type="button">Закрыть</button>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="vendor/face-api.js"></script>
+<script>
+(function(){
+'use strict';
+const OW=768, OH=1024, CX=384, DX=92, EY=410, CY=748, TOPY=78;
+const KEY='fnp.shots.v2';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ---------- Telegram ---------- */
+try{
+  const tg=window.Telegram&&window.Telegram.WebApp;
+  if(tg){
+    tg.ready();tg.expand();
+    if(tg.disableVerticalSwipes)tg.disableVerticalSwipes();
+    if(tg.colorScheme)document.documentElement.setAttribute('data-theme',tg.colorScheme==='dark'?'dark':'light');
+  }
+}catch(e){}
+
+/* ---------- даты ---------- */
+const toIso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const todayIso=()=>toIso(new Date());
+const pd=iso=>{const a=iso.split('-').map(Number);return new Date(a[0],a[1]-1,a[2]);};
+const dd=(a,b)=>Math.round((pd(b)-pd(a))/864e5);
+const addDays=(iso,n)=>{const d=pd(iso);d.setDate(d.getDate()+n);return toIso(d);};
+const fmtShort=iso=>pd(iso).toLocaleDateString('ru-RU',{day:'numeric',month:'short'});
+const fmtFull=iso=>pd(iso).toLocaleDateString('ru-RU',{day:'numeric',month:'short',year:'numeric'});
+
+/* ---------- хранилище ---------- */
+let storageOk=true;
+try{localStorage.setItem('fnp.t','1');localStorage.removeItem('fnp.t');}catch(e){storageOk=false;}
+let shots=[];
+try{const raw=localStorage.getItem(KEY);if(raw)shots=JSON.parse(raw)||[];}catch(e){shots=[];}
+const sortShots=()=>shots.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:a.created-b.created);
+sortShots();
+const persist=()=>{try{localStorage.setItem(KEY,JSON.stringify(shots));return true;}catch(e){return false;}};
+const getShot=id=>shots.find(s=>s.id===id)||null;
+const refChin=()=>{const s=shots.find(x=>typeof x.chin==='number');return s?s.chin:null;};
+
+let toastT=null;
+function toast(m){const t=$('toast');t.textContent=m;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>{t.hidden=true;},4200);}
+
+/* ---------- линии-ориентиры ---------- */
+function guideSVG(o){
+  o=o||{};
+  const tone=o.tone||'photo', base=o.base!==false, targets=o.targets!==false;
+  const ln=(x1,y1,x2,y2,cls,dash)=>{
+    const d=dash?' stroke-dasharray="'+dash+'"':'';
+    return '<line class="u '+(cls||'')+'" x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'"'+d+'/>'+
+           '<line class="l '+(cls||'')+'" x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'"'+d+'/>';
+  };
+  const chinY=(o.chin===undefined)?CY:o.chin;
+  let s='<svg class="guides g-'+tone+'" viewBox="0 0 '+OW+' '+OH+'" preserveAspectRatio="none" aria-hidden="true">';
+  if(o.silhouette)s+='<path class="sil" d="M300 690C300 790 286 830 190 876L70 934L70 1024M468 690C468 790 482 830 578 876L698 934L698 1024"/>';
+  if(o.oval){
+    const top=TOPY,bot=(chinY==null?CY:chinY);
+    s+='<ellipse class="ov" cx="'+CX+'" cy="'+((top+bot)/2)+'" rx="205" ry="'+((bot-top)/2)+'" stroke-dasharray="2 7" stroke-width="2"/>';
+  }
+  if(base){
+    s+=ln(CX,0,CX,OH,'','8 8')+ln(0,EY,OW,EY,'','8 8');
+    if(chinY!=null)s+=ln(0,chinY,OW,chinY,'','8 8');
+  }
+  if(targets){
+    [CX-DX,CX+DX].forEach(x=>{
+      s+='<circle class="u mk" cx="'+x+'" cy="'+EY+'" r="14"/><circle class="l mk" cx="'+x+'" cy="'+EY+'" r="14"/>';
+      s+=ln(x-26,EY,x+26,EY,'mk')+ln(x,EY-26,x,EY+26,'mk');
+    });
+  }
+  if(o.labels){
+    s+='<text x="22" y="'+(EY-16)+'">линия зрачков</text>';
+    if(chinY!=null)s+='<text x="22" y="'+(chinY-16)+'">подбородок</text>';
+  }
+  if(o.hline!=null){const y=Math.round(o.hline*OH/100);s+=ln(0,y,OW,y,'hl');}
+  return s+'</svg>';
+}
+const chinLineY=()=>{const r=refChin();return r==null?null:EY+r*2*DX;};
+
+/* ---------- модель распознавания лица ---------- */
+const FA=window.faceapi;
+let modelsState='idle',modelsPromise=null;
+function loadModels(){
+  if(modelsPromise)return modelsPromise;
+  if(!FA){modelsState='failed';modelsPromise=Promise.resolve();return modelsPromise;}
+  modelsState='loading';
+  modelsPromise=(async()=>{
+    try{
+      try{await FA.tf.setBackend('webgl');}catch(e){await FA.tf.setBackend('cpu');}
+      await FA.tf.ready();
+      await FA.nets.tinyFaceDetector.loadFromUri('./model');
+      await FA.nets.faceLandmark68Net.loadFromUri('./model');
+      modelsState='ready';
+    }catch(e){modelsState='failed';}
+    updateModelInfo();
+  })();
+  updateModelInfo();
+  return modelsPromise;
+}
+function updateModelInfo(){
+  const el=$('modelInfo');
+  el.textContent=modelsState==='loading'?'Загружаю модель распознавания лица…':modelsState==='failed'?'Модель лица не загрузилась. Работает ручная отметка зрачков.':'';
+}
+function pickMeasure(det){
+  const P=det.landmarks.positions;
+  const mean=(a,b)=>{let x=0,y=0;for(let i=a;i<=b;i++){x+=P[i].x;y+=P[i].y;}const n=b-a+1;return{x:x/n,y:y/n};};
+  let l=mean(36,41),r=mean(42,47);
+  if(l.x>r.x){const t=l;l=r;r=t;}
+  return{l:l,r:r,chin:{x:P[8].x,y:P[8].y},nose:{x:P[30].x,y:P[30].y}};
+}
+async function measureLive(video){
+  if(modelsState!=='ready')return null;
+  const det=await FA.detectSingleFace(video,new FA.TinyFaceDetectorOptions({inputSize:224,scoreThreshold:0.45})).withFaceLandmarks();
+  return det?pickMeasure(det):null;
+}
+async function measureCanvas(cv){
+  await loadModels();
+  if(modelsState!=='ready')return null;
+  const k=Math.min(1,900/Math.max(cv.width,cv.height));
+  let src=cv;
+  if(k<1){src=document.createElement('canvas');src.width=Math.round(cv.width*k);src.height=Math.round(cv.height*k);src.getContext('2d').drawImage(cv,0,0,src.width,src.height);}
+  const det=await FA.detectSingleFace(src,new FA.TinyFaceDetectorOptions({inputSize:416,scoreThreshold:0.4})).withFaceLandmarks();
+  if(!det)return null;
+  const m=pickMeasure(det),f=1/(k<1?k:1);
+  ['l','r','chin','nose'].forEach(n=>{m[n]={x:m[n].x*f,y:m[n].y*f};});
+  return m;
+}
+
+/* ---------- состояние ---------- */
+const S={phase:'start',src:null,pts:[null,null],drag:-1,aligned:null,labelTouched:false,chin:null,chinRatio:null,auto:false};
+function setPhase(p){
+  if(S.phase==='cam'&&p!=='cam')stopCam();
+  S.phase=p;
+  $('ph-start').hidden=p!=='start';$('ph-cam').hidden=p!=='cam';$('ph-mark').hidden=p!=='mark';$('ph-result').hidden=p!=='result';
+  if(p==='mark'){fitMark();placeMarkers();updateMarkUI();}
+  if(p==='result')drawResult();
+  window.scrollTo(0,0);
+}
+function showTab(name){
+  if(name!=='shoot'&&S.phase==='cam')setPhase('start');
+  ['shoot','compare','archive'].forEach(t=>{$('tab-'+t).hidden=t!==name;});
+  document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===name?'true':'false'));
+  if(name==='compare')renderCompare();
+  if(name==='archive')renderArchive();
+}
+document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&S.phase==='cam')setPhase('start');});
+
+/* ---------- обработка фото (из камеры или файла) ---------- */
+async function processSource(cv,busyEl){
+  if(busyEl){busyEl.textContent='Ищу лицо…';busyEl.hidden=false;}
+  let m=null;
+  try{m=await measureCanvas(cv);}catch(e){m=null;}
+  if(busyEl)busyEl.hidden=true;
+  S.src=cv;S.aligned=null;S.chin=m?m.chin:null;
+  $('startMsg').textContent='';$('mkMsg').textContent='';
+  if(m){S.pts=[m.l,m.r];S.auto=true;setPhase('result');}
+  else{
+    S.pts=[null,null];S.auto=false;setPhase('mark');
+    $('mkMsg').textContent=modelsState==='ready'?'Лицо не найдено. Отметь зрачки вручную.':'';
+  }
+}
+function onFile(file){
+  if(!file)return;
+  const url=URL.createObjectURL(file),img=new Image();
+  img.onload=()=>{
+    URL.revokeObjectURL(url);
+    const k=Math.min(1,1800/Math.max(img.naturalWidth,img.naturalHeight));
+    const c=document.createElement('canvas');
+    c.width=Math.max(1,Math.round(img.naturalWidth*k));c.height=Math.max(1,Math.round(img.naturalHeight*k));
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    $('startMsg').textContent='Ищу лицо…';
+    processSource(c,null);
+  };
+  img.onerror=()=>{URL.revokeObjectURL(url);$('startMsg').textContent='Не удалось открыть файл. Выбери фото в формате JPG или PNG.';};
+  img.src=url;
+}
+$('btnNative').addEventListener('click',()=>{$('inCam').value='';$('inCam').click();});
+$('btnGal').addEventListener('click',()=>{$('inGal').value='';$('inGal').click();});
+$('inCam').addEventListener('change',e=>onFile(e.target.files&&e.target.files[0]));
+$('inGal').addEventListener('change',e=>onFile(e.target.files&&e.target.files[0]));
+
+/* ---------- живая камера ---------- */
+const cam={stream:null,run:false,hold:0,last:null,token:0};
+const vid=$('vid');
+const HOLD_FRAMES=9;
+function setHint(text,cls){const h=$('camHint');h.textContent=text;h.className='camhint'+(cls?' '+cls:'');}
+function mapPt(p,vw,vh){
+  const k=Math.max(OW/vw,OH/vh),ox=(OW-vw*k)/2,oy=(OH-vh*k)/2;
+  return{x:OW-(p.x*k+ox),y:p.y*k+oy};
+}
+function evalPose(m){
+  const l0=m.l,r0=m.r;
+  const l=l0.x<r0.x?l0:r0,r=l0.x<r0.x?r0:l0;
+  const d=Math.hypot(r.x-l.x,r.y-l.y),mx=(l.x+r.x)/2,my=(l.y+r.y)/2;
+  const roll=Math.atan2(r.y-l.y,r.x-l.x)*180/Math.PI;
+  const yaw=(m.nose.x-mx)/d;
+  const ratio=(m.chin.y-my)/d,ref=refChin();
+  const res={l:l,r:r,chin:m.chin,msg:null,chinBad:false};
+  const want=2*DX;
+  if(d<want*0.88)res.msg='Ближе к камере';
+  else if(d>want*1.12)res.msg='Дальше от камеры';
+  else if(Math.abs(mx-CX)>0.12*d)res.msg=mx<CX?'Сдвинься вправо':'Сдвинься влево';
+  else if(Math.abs(my-EY)>0.14*d)res.msg=my<EY?'Подними телефон чуть выше':'Опусти телефон чуть ниже';
+  else if(Math.abs(roll)>3)res.msg='Выровняй наклон головы';
+  else if(Math.abs(yaw)>0.09)res.msg='Смотри прямо, не поворачивай голову';
+  else if(ref!=null&&Math.abs(ratio-ref)>0.06*ref){
+    res.chinBad=true;res.msg=ratio>ref?'Подбородок ниже линии, чуть подними':'Подбородок выше линии, чуть опусти';
+  }
+  return res;
+}
+function drawLive(res){
+  const g=$('liveG');
+  if(!res){g.innerHTML='';return;}
+  const ok=!res.msg;
+  let s='<svg class="guides" viewBox="0 0 '+OW+' '+OH+'" preserveAspectRatio="none" aria-hidden="true">';
+  s+='<circle class="d'+(ok?' ok':'')+'" cx="'+res.l.x+'" cy="'+res.l.y+'" r="9"/>';
+  s+='<circle class="d'+(ok?' ok':'')+'" cx="'+res.r.x+'" cy="'+res.r.y+'" r="9"/>';
+  s+='<circle class="d'+(ok||!res.chinBad?(ok?' ok':''):'')+'" cx="'+res.chin.x+'" cy="'+res.chin.y+'" r="9"/>';
+  g.innerHTML=s+'</svg>';
+}
+async function startCam(){
+  $('startMsg').textContent='';
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    $('startMsg').textContent='В этом окне камера недоступна. Нажми «Снять в приложении камеры».';return;
+  }
+  const my=++cam.token;
+  setPhase('cam');
+  setHint('Запускаю камеру…');
+  $('camG').innerHTML=guideSVG({tone:'photo',oval:true,targets:true,base:true,chin:chinLineY(),labels:false});
+  drawLive(null);
+  loadModels();
+  try{
+    cam.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280},height:{ideal:1280}},audio:false});
+  }catch(e){
+    if(my!==cam.token)return;
+    setPhase('start');
+    $('startMsg').textContent=(e&&e.name==='NotAllowedError')?'Нет доступа к камере. Разреши камеру для Telegram в настройках телефона или нажми «Снять в приложении камеры».':'Камера не запустилась. Нажми «Снять в приложении камеры».';
+    return;
+  }
+  if(my!==cam.token){cam.stream.getTracks().forEach(t=>t.stop());return;}
+  vid.srcObject=cam.stream;
+  try{await vid.play();}catch(e){}
+  cam.run=true;cam.hold=0;cam.last=null;
+  setHint(modelsState==='ready'?'Поставь лицо в овал':'Загружаю модель лица…');
+  loop(my);
+}
+function stopCam(){
+  cam.run=false;cam.token++;
+  if(cam.stream){cam.stream.getTracks().forEach(t=>t.stop());cam.stream=null;}
+  try{vid.pause();vid.srcObject=null;}catch(e){}
+  $('liveG').innerHTML='';
+}
+async function loop(my){
+  while(cam.run&&my===cam.token){
+    const t0=performance.now();
+    if(vid.videoWidth>0&&modelsState==='ready'){
+      let m=null;
+      try{m=await measureLive(vid);}catch(e){m=null;}
+      if(!cam.run||my!==cam.token)return;
+      if(!m){cam.hold=0;cam.last=null;drawLive(null);setHint('Лицо не видно. Встань перед камерой','bad');}
+      else{
+        const vw=vid.videoWidth,vh=vid.videoHeight;
+        const mm={l:mapPt(m.l,vw,vh),r:mapPt(m.r,vw,vh),chin:mapPt(m.chin,vw,vh),nose:mapPt(m.nose,vw,vh)};
+        cam.last=m;
+        const res=evalPose(mm);
+        drawLive(res);
+        if(res.msg){cam.hold=0;setHint(res.msg,'bad');}
+        else{
+          cam.hold++;setHint('Держи ровно…','ok');
+          if(cam.hold>=HOLD_FRAMES){shoot();return;}
+        }
+      }
+    }else if(modelsState==='failed'){
+      setHint('Подсказки недоступны. Поставь лицо в овал и нажми «Снять сейчас»');
+    }
+    const wait=Math.max(30,120-(performance.now()-t0));
+    await new Promise(r=>setTimeout(r,wait));
+  }
+}
+function shoot(){
+  if(!cam.stream||!vid.videoWidth){return;}
+  const c=document.createElement('canvas');c.width=vid.videoWidth;c.height=vid.videoHeight;
+  c.getContext('2d').drawImage(vid,0,0);
+  cam.run=false;
+  const busy=$('camBusy');
+  busy.textContent='Ищу лицо…';busy.hidden=false;
+  processSource(c,busy).then(()=>{busy.hidden=true;});
+}
+$('btnCam').addEventListener('click',startCam);
+$('btnShot').addEventListener('click',shoot);
+$('btnCamCancel').addEventListener('click',()=>setPhase('start'));
+
+/* ---------- отметка зрачков вручную ---------- */
+function fitMark(){
+  if(!S.src)return;
+  const cw=$('mkStage').clientWidth||320,maxH=Math.max(260,window.innerHeight*0.68);
+  const k=Math.min(cw/S.src.width,maxH/S.src.height),cv=$('mk');
+  if(cv.width!==S.src.width||cv.height!==S.src.height){cv.width=S.src.width;cv.height=S.src.height;}
+  cv.getContext('2d').drawImage(S.src,0,0);
+  cv.style.width=Math.round(S.src.width*k)+'px';cv.style.height=Math.round(S.src.height*k)+'px';
+}
+window.addEventListener('resize',()=>{if(S.phase==='mark')fitMark();});
+function placeMarkers(){
+  for(let i=0;i<2;i++){
+    const el=$('pm'+i),p=S.pts[i];
+    if(!p||!S.src){el.style.display='none';continue;}
+    el.style.display='block';el.style.left=(p.x/S.src.width*100)+'%';el.style.top=(p.y/S.src.height*100)+'%';
+  }
+}
+function updateMarkUI(){
+  const a=S.pts[0],b=S.pts[1];
+  $('st0').className='step'+(a?' done':' active');
+  $('st1').className='step'+(b?' done':(a?' active':''));
+  $('mkHint').textContent=!a?'Коснись центра левого зрачка (левого на фото).':!b?'Теперь центр правого зрачка.':'Готово. Перетащи точку, чтобы уточнить.';
+  const far=a&&b&&Math.hypot(b.x-a.x,b.y-a.y)>S.src.width*0.04;
+  $('btnAlign').disabled=!far;
+  if(a&&b&&!far)$('mkMsg').textContent='Точки слишком близко. Отметь центры зрачков заново.';
+}
+const toImg=e=>{
+  const r=$('mk').getBoundingClientRect();
+  return{x:Math.min(S.src.width,Math.max(0,(e.clientX-r.left)/r.width*S.src.width)),y:Math.min(S.src.height,Math.max(0,(e.clientY-r.top)/r.height*S.src.height))};
+};
+function drawLoupe(p,e){
+  const lp=$('loupe'),c=lp.getContext('2d'),r=$('mk').getBoundingClientRect(),k=S.src.width/r.width,half=18*k;
+  c.fillStyle='#000';c.fillRect(0,0,224,224);
+  c.drawImage(S.src,p.x-half,p.y-half,half*2,half*2,0,0,224,224);
+  c.strokeStyle='#E8335A';c.lineWidth=2;c.beginPath();
+  c.moveTo(112,70);c.lineTo(112,104);c.moveTo(112,120);c.lineTo(112,154);c.moveTo(70,112);c.lineTo(104,112);c.moveTo(120,112);c.lineTo(154,112);c.stroke();
+  const sr=$('mkStage').getBoundingClientRect();
+  lp.className='loupe '+((e.clientX-sr.left)<sr.width/2?'r':'l');lp.style.display='block';
+}
+const mk=$('mk');
+mk.addEventListener('pointerdown',e=>{
+  if(!S.src)return;
+  e.preventDefault();
+  const p=toImg(e);let idx;
+  if(S.pts[0]&&S.pts[1])idx=Math.hypot(p.x-S.pts[0].x,p.y-S.pts[0].y)<=Math.hypot(p.x-S.pts[1].x,p.y-S.pts[1].y)?0:1;
+  else idx=S.pts[0]?1:0;
+  S.drag=idx;S.pts[idx]=p;$('mkMsg').textContent='';
+  try{mk.setPointerCapture(e.pointerId);}catch(err){}
+  placeMarkers();drawLoupe(p,e);
+});
+mk.addEventListener('pointermove',e=>{
+  if(S.drag<0)return;
+  const p=toImg(e);S.pts[S.drag]=p;placeMarkers();drawLoupe(p,e);
+});
+function endDrag(){if(S.drag<0)return;S.drag=-1;$('loupe').style.display='none';updateMarkUI();}
+mk.addEventListener('pointerup',endDrag);
+mk.addEventListener('pointercancel',endDrag);
+$('btnReset').addEventListener('click',()=>{S.pts=[null,null];$('mkMsg').textContent='';placeMarkers();updateMarkUI();});
+$('btnOther').addEventListener('click',()=>setPhase('start'));
+$('btnAlign').addEventListener('click',()=>{S.auto=false;setPhase('result');});
+
+/* ---------- выравнивание ---------- */
+function align(src,p1,p2){
+  const t1={x:CX-DX,y:EY},t2={x:CX+DX,y:EY};
+  const dsx=p2.x-p1.x,dsy=p2.y-p1.y,dtx=t2.x-t1.x;
+  const s=dtx/Math.hypot(dsx,dsy),ang=-Math.atan2(dsy,dsx);
+  const C=Math.cos(ang)*s,SN=Math.sin(ang)*s;
+  const tx=t1.x-(C*p1.x-SN*p1.y),ty=t1.y-(SN*p1.x+C*p1.y);
+  const cv=document.createElement('canvas');cv.width=OW;cv.height=OH;
+  const ctx=cv.getContext('2d');ctx.fillStyle='#7d8a91';ctx.fillRect(0,0,OW,OH);
+  ctx.imageSmoothingQuality='high';
+  ctx.setTransform(C,SN,-SN,C,tx,ty);ctx.drawImage(src,0,0);
+  const den=C*C+SN*SN;let gaps=false;
+  [[0,0],[OW,0],[0,OH],[OW,OH]].forEach(q=>{
+    const ux=q[0]-tx,uy=q[1]-ty,x=(C*ux+SN*uy)/den,y=(-SN*ux+C*uy)/den;
+    if(x<-1||y<-1||x>src.width+1||y>src.height+1)gaps=true;
+  });
+  return{cv:cv,scale:s,tilt:Math.abs(Math.atan2(dsy,dsx)*180/Math.PI),gaps:gaps,tf:p=>({x:C*p.x-SN*p.y+tx,y:SN*p.x+C*p.y+ty})};
+}
+const autoLabel=iso=>{
+  if(!shots.length)return 'Старт';
+  const w=Math.round(dd(shots[0].date,iso)/7);
+  return w>0?'Неделя '+w:'Снимок';
+};
+function drawResult(){
+  const A=align(S.src,S.pts[0],S.pts[1]);S.aligned=A;
+  const c=$('resCv').getContext('2d');c.clearRect(0,0,OW,OH);c.drawImage(A.cv,0,0);
+  S.chinRatio=S.chin?(A.tf(S.chin).y-EY)/(2*DX):null;
+  const ref=refChin();
+  let line=null;
+  if(ref!=null)line=EY+ref*2*DX;else if(S.chinRatio!=null)line=EY+S.chinRatio*2*DX;
+  $('resG').innerHTML=guideSVG({tone:'photo',oval:true,chin:line});
+  $('resG').hidden=!$('showLines').checked;
+  const w=[];
+  if(A.gaps)w.push('По краям нет изображения (серые поля). Сними с большего расстояния.');
+  if(A.scale>2.2)w.push('Лицо на исходном фото мелкое, качество будет ниже. Снимай ближе.');
+  if(A.tilt>20)w.push('Фото было сильно наклонено. Приложение выровняло его, но лучше держать телефон ровно.');
+  if(ref!=null&&S.chinRatio!=null){
+    const diff=(S.chinRatio-ref)/ref*100;
+    if(Math.abs(diff)>6)w.push('Подбородок отличается от эталона на '+Math.abs(Math.round(diff))+'%: наклон головы другой, сравнение будет менее точным.');
+  }
+  $('resWarn').textContent=w.join(' ');
+  $('resInfo').textContent=S.auto?'Зрачки найдены автоматически. Если линии не совпали с глазами, нажми «Уточнить точки».':(ref==null&&S.chinRatio!=null?'Первый снимок станет эталоном для линии подбородка.':'');
+  if(!$('fDate').value)$('fDate').value=todayIso();
+  S.labelTouched=false;$('fLabel').value=autoLabel($('fDate').value);
+}
+$('showLines').addEventListener('change',function(){$('resG').hidden=!this.checked;});
+$('fDate').addEventListener('change',function(){if(!S.labelTouched&&this.value)$('fLabel').value=autoLabel(this.value);});
+$('fLabel').addEventListener('input',()=>{S.labelTouched=true;});
+$('btnBack').addEventListener('click',()=>setPhase('mark'));
+$('btnRetake').addEventListener('click',()=>{S.src=null;S.aligned=null;setPhase('start');});
+$('btnSave').addEventListener('click',()=>{
+  if(!S.aligned)return;
+  const date=$('fDate').value||todayIso();
+  const shot={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),date:date,label:($('fLabel').value.trim()||autoLabel(date)),img:S.aligned.cv.toDataURL('image/jpeg',0.86),created:Date.now()};
+  if(S.chinRatio!=null)shot.chin=Math.round(S.chinRatio*1000)/1000;
+  shots.push(shot);sortShots();
+  const ok=persist();
+  S.aligned=null;S.src=null;S.pts=[null,null];S.chin=null;
+  setPhase('start');renderStatus();showTab('archive');
+  toast(ok?'Снимок сохранён':'Не хватило памяти. Снимок есть только в этом сеансе, сохрани его из архива.');
+});
+
+/* ---------- статус ---------- */
+function renderStatus(){
+  const n=shots.length;let h='<span class="pill">Снимков: '+n+'</span>';
+  if(n){
+    const due=addDays(shots[n-1].date,7),diff=dd(todayIso(),due);
+    if(diff>0)h+='<span class="pill">Следующий: через '+diff+' дн. · '+fmtShort(due)+'</span>';
+    else if(diff===0)h+='<span class="pill due">Следующий снимок: сегодня</span>';
+    else h+='<span class="pill late">Просрочен на '+(-diff)+' дн.</span>';
+  }else h+='<span class="pill due">Начни с исходного снимка</span>';
+  if(!storageOk)h+='<span class="pill warn">Память недоступна: сохраняй каждый снимок вручную</span>';
+  $('status').innerHTML=h;
+}
+
+/* ---------- сравнение ---------- */
+const C={a:null,b:null,mode:'slide',lines:true,hl:false,hlPos:68,pos:50};
+const opts=sel=>shots.map(s=>'<option value="'+s.id+'"'+(s.id===sel?' selected':'')+'>'+esc(s.label)+' · '+fmtShort(s.date)+'</option>').join('');
+const gOpts=()=>({tone:'photo',oval:false,targets:false,base:C.lines,chin:chinLineY(),hline:C.hl?C.hlPos:null});
+function updateGuides(){document.querySelectorAll('#cmpBody .gwrap').forEach(g=>{g.innerHTML=guideSVG(gOpts());g.hidden=!C.lines&&!C.hl;});}
+function applyPos(){
+  const st=$('cmpStage');if(st)st.style.setProperty('--p',C.pos+'%');
+  const r=$('cmpPos');if(r&&String(r.value)!==String(C.pos))r.value=C.pos;
+}
+function renderCompare(){
+  const box=$('cmpBody');
+  if(shots.length<2){
+    box.innerHTML='<div class="empty"><p>Для сравнения нужно минимум два снимка. Сейчас: '+shots.length+'.</p><button class="btn primary" id="goShoot" type="button">К съёмке</button></div>';
+    $('goShoot').onclick=()=>showTab('shoot');
+    return;
+  }
+  if(!getShot(C.a))C.a=shots[0].id;
+  if(!getShot(C.b))C.b=shots[shots.length-1].id;
+  const A=getShot(C.a),B=getShot(C.b),days=Math.abs(dd(A.date,B.date));
+  const tagA='До · '+esc(A.label)+' · '+fmtShort(A.date),tagB='После · '+esc(B.label)+' · '+fmtShort(B.date);
+  let stage;
+  if(C.mode==='slide'){
+    stage='<div class="cmp-stage" id="cmpStage">'+
+      '<img class="ci" src="'+A.img+'" alt="До" draggable="false">'+
+      '<div class="after"><img class="ci" src="'+B.img+'" alt="После" draggable="false"></div>'+
+      '<div class="divider"><span class="knob">&lsaquo; &rsaquo;</span></div>'+
+      '<div class="gwrap"></div>'+
+      '<span class="tag tl">'+tagA+'</span><span class="tag tr">'+tagB+'</span></div>'+
+      '<label class="fld"><span>Положение шторки</span><input type="range" id="cmpPos" min="0" max="100" value="'+C.pos+'"></label>';
+  }else{
+    stage='<div class="side">'+
+      '<figure class="cell"><img class="ci" src="'+A.img+'" alt="До"><div class="gwrap"></div><span class="tag bl">'+tagA+'</span></figure>'+
+      '<figure class="cell"><img class="ci" src="'+B.img+'" alt="После"><div class="gwrap"></div><span class="tag bl">'+tagB+'</span></figure></div>';
+  }
+  box.innerHTML=
+    '<div class="row2"><label class="fld"><span>До</span><select id="selA">'+opts(C.a)+'</select></label>'+
+    '<label class="fld"><span>После</span><select id="selB">'+opts(C.b)+'</select></label></div>'+
+    '<div class="seg" role="group" aria-label="Режим"><button type="button" data-mode="slide" aria-pressed="'+(C.mode==='slide')+'">Шторка</button><button type="button" data-mode="side" aria-pressed="'+(C.mode==='side')+'">Рядом</button></div>'+
+    stage+
+    '<p class="meta">Между снимками: '+days+' дн. (≈ '+Math.round(days/7)+' нед.)</p>'+
+    '<div class="opts"><label class="chk"><input type="checkbox" id="cLines"'+(C.lines?' checked':'')+'> Линии: центр, зрачки, подбородок</label>'+
+    '<label class="chk"><input type="checkbox" id="cHl"'+(C.hl?' checked':'')+'> Своя горизонтальная линия</label>'+
+    '<input type="range" id="cHlPos" min="0" max="100" value="'+C.hlPos+'" aria-label="Положение линии"'+(C.hl?'':' disabled')+'></div>';
+  updateGuides();applyPos();
+  $('selA').onchange=function(){C.a=this.value;renderCompare();};
+  $('selB').onchange=function(){C.b=this.value;renderCompare();};
+  box.querySelectorAll('.seg button').forEach(b=>{b.onclick=()=>{C.mode=b.dataset.mode;renderCompare();};});
+  $('cLines').onchange=function(){C.lines=this.checked;updateGuides();};
+  $('cHl').onchange=function(){C.hl=this.checked;$('cHlPos').disabled=!this.checked;updateGuides();};
+  $('cHlPos').oninput=function(){C.hlPos=+this.value;updateGuides();};
+  const rp=$('cmpPos');if(rp)rp.oninput=function(){C.pos=+this.value;applyPos();};
+  const st=$('cmpStage');
+  if(st){
+    let down=false;
+    const mv=e=>{const r=st.getBoundingClientRect();C.pos=Math.round(Math.min(100,Math.max(0,(e.clientX-r.left)/r.width*100)));applyPos();};
+    st.addEventListener('pointerdown',e=>{down=true;try{st.setPointerCapture(e.pointerId);}catch(err){}mv(e);});
+    st.addEventListener('pointermove',e=>{if(down)mv(e);});
+    st.addEventListener('pointerup',()=>{down=false;});
+    st.addEventListener('pointercancel',()=>{down=false;});
+  }
+}
+
+/* ---------- архив ---------- */
+let confirmId=null,confirmT=null;
+function openViewer(src){$('viewerImg').src=src;$('viewer').hidden=false;}
+$('viewerClose').addEventListener('click',()=>{$('viewer').hidden=true;$('viewerImg').removeAttribute('src');});
+function renderArchive(){
+  const box=$('arcBody');
+  if(!shots.length){
+    box.innerHTML='<div class="empty"><p>Снимков пока нет. Первый станет исходным, с ним ты будешь сравнивать все следующие.</p><button class="btn primary" id="goShoot2" type="button">Сделать первый снимок</button></div>'+
+      '<p class="note">Снимки хранятся только на этом устройстве и никуда не отправляются.</p>';
+    $('goShoot2').onclick=()=>showTab('shoot');
+    return;
+  }
+  const first=shots[0].date;
+  const cards=shots.slice().reverse().map(s=>{
+    const d=dd(first,s.date);
+    return '<div class="card"><img src="'+s.img+'" alt="'+esc(s.label)+'" data-act="view" data-id="'+s.id+'">'+
+      '<div class="ttl">'+esc(s.label)+'</div>'+
+      '<div class="meta">'+fmtFull(s.date)+(d>0?' · +'+d+' дн.':'')+'</div>'+
+      '<div class="btns"><button class="btn small" type="button" data-act="view" data-id="'+s.id+'">Открыть и сохранить</button>'+
+      '<button class="btn small'+(confirmId===s.id?' danger':' ghost')+'" type="button" data-act="del" data-id="'+s.id+'">'+(confirmId===s.id?'Точно удалить?':'Удалить')+'</button></div></div>';
+  }).join('');
+  box.innerHTML='<div class="grid">'+cards+'</div>'+
+    '<p class="note">Снимки хранятся только на этом устройстве и могут пропасть, если очистить данные Telegram. Сохраняй важные в галерею.</p>';
+  box.querySelectorAll('[data-act]').forEach(b=>{
+    b.onclick=()=>{
+      const id=b.dataset.id,s=getShot(id);if(!s)return;
+      if(b.dataset.act==='view'){openViewer(s.img);return;}
+      if(confirmId===id){
+        shots=shots.filter(x=>x.id!==id);confirmId=null;persist();renderStatus();renderArchive();toast('Снимок удалён');
+      }else{
+        confirmId=id;clearTimeout(confirmT);confirmT=setTimeout(()=>{confirmId=null;renderArchive();},4000);renderArchive();
+      }
+    };
+  });
+}
+
+/* ---------- старт ---------- */
+$('tpl').innerHTML=guideSVG({tone:'plain',oval:true,silhouette:true,labels:true});
+$('fDate').value=todayIso();
+renderStatus();
+loadModels();
+
+/* для проверок */
+window.__fnp={S:S,align:align,measureCanvas:measureCanvas,evalPose:evalPose,get models(){return modelsState;},shots:()=>shots};
+})();
+</script>
+</body>
+</html>
