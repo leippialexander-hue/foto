@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Селфи-дневник</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@500&family=Unbounded:wght@600&display=swap">
+<style>
+/* Layout: две колонки фото сверху, поля подписей ниже, готовый коллаж справа/ниже. */
+:root{
+  --bg:#EEF1F2; --surface:#FFFFFF; --ink:#16212A; --muted:#5A6A74; --line:#D3DADE;
+  --accent:#0E5C73; --accent-ink:#FFFFFF; --stage:#DCE2E5; --warn:#B3261E;
+  --f-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --f-body:"Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1519; --surface:#16212A; --ink:#E6EDF0; --muted:#92A4AE; --line:#2A3944;
+    --accent:#5CC3DD; --accent-ink:#04202A; --stage:#0A1013; --warn:#FF8F85; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1519; --surface:#16212A; --ink:#E6EDF0; --muted:#92A4AE; --line:#2A3944;
+  --accent:#5CC3DD; --accent-ink:#04202A; --stage:#0A1013; --warn:#FF8F85; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--f-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:24px 56px;
+}
+[hidden]{display:none!important}
+.app{max-width:980px;margin:0 auto;display:grid;gap:20px}
+.eyebrow{font:500 11px/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{font:600 26px/1.15 var(--f-display);letter-spacing:-.01em;margin:10px 0 8px;text-wrap:balance}
+h2{font:500 12px/1.2 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+p{margin:0}
+.lede{color:var(--muted);max-width:60ch}
+.slots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.slot{display:grid;gap:10px;align-content:start;min-width:0}
+.drop{position:relative;aspect-ratio:3/4;border-radius:14px;background:var(--stage);border:2px dashed var(--line);overflow:hidden;display:grid;place-items:center;text-align:center;padding:12px;color:var(--muted);font-size:14px;cursor:pointer}
+.drop.has{border-style:solid;border-color:transparent;padding:0}
+.drop.over{border-color:var(--accent)}
+.drop img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.drop:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{min-height:46px;padding:0 16px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 15px var(--f-body);cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn:disabled{opacity:.45;cursor:default}
+.fld{display:grid;gap:6px;min-width:0}
+.fld>span{font:500 11px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+input[type="text"],input[type="date"]{width:100%;min-height:46px;border:1px solid var(--line);border-radius:10px;padding:0 12px;background:var(--surface);color:var(--ink);font-size:16px}
+.row2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.chk{display:flex;gap:10px;align-items:center;font-size:15px;min-height:32px}
+.chk input{width:20px;height:20px;accent-color:var(--accent)}
+.bar{display:flex;flex-wrap:wrap;gap:10px}
+.out{display:grid;gap:12px;justify-items:start}
+.out canvas{width:100%;max-width:980px;height:auto;border-radius:12px;background:var(--stage);display:block}
+.msg{font-size:14px;color:var(--warn)}
+.msg:empty{display:none}
+.note{font-size:13px;color:var(--muted)}
+@media (max-width:560px){.row2{grid-template-columns:minmax(0,1fr)}}
+</style>
+</head>
+<body>
+<main class="app">
+  <header>
+    <div class="eyebrow">Для куратора</div>
+    <h1>Селфи-дневник</h1>
+    <p class="lede">Приложение для быстрой генерации коллажа. Не заменяет коллаж в другой программе.</p>
+  </header>
+
+  <section class="slots" aria-label="Фото">
+    <div class="slot">
+      <h2>Старое фото</h2>
+      <div class="drop" id="dropA" tabindex="0" role="button" aria-label="Выбрать старое фото">Нажми или перетащи сюда старое фото</div>
+      <input type="file" id="fileA" accept="image/*" hidden>
+    </div>
+    <div class="slot">
+      <h2>Новое фото</h2>
+      <div class="drop" id="dropB" tabindex="0" role="button" aria-label="Выбрать новое фото">Нажми или перетащи сюда новое фото</div>
+      <input type="file" id="fileB" accept="image/*" hidden>
+    </div>
+  </section>
+
+  <label class="chk"><input type="checkbox" id="lines"> Показать линии: центр и уровень зрачков</label>
+
+  <div class="bar">
+    <button class="btn" id="btnSwap" type="button">Поменять местами</button>
+    <button class="btn primary" id="btnSave" type="button" disabled>Скачать коллаж</button>
+  </div>
+  <p class="msg" id="msg" role="status"></p>
+
+  <section class="out" id="out" hidden>
+    <h2>Готовый коллаж</h2>
+    <canvas id="cv" width="1548" height="1024"></canvas>
+    <p class="note">Если скачивание не сработало, нажми на коллаж правой кнопкой и выбери «Сохранить изображение как».</p>
+  </section>
+</main>
+<script>
+(function(){
+'use strict';
+const $=id=>document.getElementById(id);
+const OW=768,OH=1024,CXL=384,EY=410,GAP=12,W=OW*2+GAP,H=OH;
+const S={a:null,b:null};
+const LABEL={a:'Нажми или перетащи сюда старое фото',b:'Нажми или перетащи сюда новое фото'};
+
+function loadFile(file,slot){
+  if(!file)return;
+  const url=URL.createObjectURL(file),img=new Image();
+  img.onload=()=>{S[slot]={img:img,url:url};$('msg').textContent='';paintDrop(slot);update();};
+  img.onerror=()=>{URL.revokeObjectURL(url);$('msg').textContent='Не удалось открыть файл. Выбери фото в формате JPG или PNG.';};
+  img.src=url;
+}
+function paintDrop(slot){
+  const d=$(slot==='a'?'dropA':'dropB'),s=S[slot];
+  if(!s){d.className='drop';d.textContent=LABEL[slot];return;}
+  d.className='drop has';d.innerHTML='';
+  const i=document.createElement('img');i.src=s.url;i.alt=slot==='a'?'Старое фото':'Новое фото';d.appendChild(i);
+}
+[['a','dropA','fileA'],['b','dropB','fileB']].forEach(t=>{
+  const drop=$(t[1]),inp=$(t[2]);
+  drop.addEventListener('click',()=>{inp.value='';inp.click();});
+  drop.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();inp.value='';inp.click();}});
+  inp.addEventListener('change',()=>loadFile(inp.files&&inp.files[0],t[0]));
+  drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('over');});
+  drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
+  drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');loadFile(e.dataTransfer.files&&e.dataTransfer.files[0],t[0]);});
+});
+
+function drawCover(ctx,img,x,y,w,h){
+  const k=Math.max(w/img.naturalWidth,h/img.naturalHeight),dw=img.naturalWidth*k,dh=img.naturalHeight*k;
+  ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();
+  ctx.imageSmoothingQuality='high';ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);ctx.restore();
+}
+function drawLines(ctx,x,y){
+  ctx.save();ctx.beginPath();ctx.rect(x,y,OW,OH);ctx.clip();
+  ctx.setLineDash([10,10]);
+  [['rgba(0,0,0,.4)',4],['rgba(255,255,255,.92)',1.5]].forEach(s=>{
+    ctx.strokeStyle=s[0];ctx.lineWidth=s[1];ctx.beginPath();
+    ctx.moveTo(x+CXL,y);ctx.lineTo(x+CXL,y+OH);ctx.moveTo(x,y+EY);ctx.lineTo(x+OW,y+EY);ctx.stroke();
+  });
+  ctx.restore();
+}
+function render(){
+  const ctx=$('cv').getContext('2d');
+  ctx.fillStyle='#10181D';ctx.fillRect(0,0,W,H);
+  [[S.a,0],[S.b,OW+GAP]].forEach(t=>{
+    ctx.fillStyle='#1C2830';ctx.fillRect(t[1],0,OW,OH);
+    if(t[0]){drawCover(ctx,t[0].img,t[1],0,OW,OH);if($('lines').checked)drawLines(ctx,t[1],0);}
+  });
+}
+function update(){
+  $('btnSave').disabled=!(S.a&&S.b);
+  $('out').hidden=!(S.a||S.b);
+  if(S.a||S.b)render();
+}
+$('lines').addEventListener('change',update);
+$('btnSwap').addEventListener('click',()=>{
+  const t=S.a;S.a=S.b;S.b=t;paintDrop('a');paintDrop('b');update();
+});
+$('btnSave').addEventListener('click',()=>{
+  render();
+  $('cv').toBlob(b=>{
+    if(!b){$('msg').textContent='Не удалось собрать файл.';return;}
+    const url=URL.createObjectURL(b),a=document.createElement('a');
+    a.href=url;a.download='collage-'+new Date().toISOString().slice(0,10)+'.jpg';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),4000);
+  },'image/jpeg',0.92);
+});
+window.__cur={S:S,render:render};
+})();
+</script>
+</body>
+</html>

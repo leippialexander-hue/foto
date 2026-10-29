@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>Фото на паспорт</title>
+<title>Селфи-помощник</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@500&family=Unbounded:wght@600&display=swap">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
@@ -167,9 +167,9 @@ input[type="range"]{width:100%;accent-color:var(--accent)}
 <body>
 <main class="app" id="app">
   <header>
-    <div class="eyebrow">Проект · овал лица</div>
-    <h1>Фото на паспорт</h1>
-    <p class="lede">Один и тот же ракурс каждую неделю, чтобы честно сравнивать изменения на лице.</p>
+    <div class="eyebrow">Проект подтяжки овала лица</div>
+    <h1>Селфи-помощник</h1>
+    <p class="lede">Помогает сделать правильное селфи: одно и то же положение лица каждый раз. Сними фото и отправь его куратору.</p>
     <div class="status" id="status"></div>
   </header>
 
@@ -199,13 +199,15 @@ input[type="range"]{width:100%;accent-color:var(--accent)}
       <input type="file" id="inCam" accept="image/*" capture="user" hidden>
       <input type="file" id="inGal" accept="image/*" hidden>
       <div class="tips">
-        <h2>Условия съёмки</h2>
+        <h2>На что обратить внимание</h2>
         <ul>
           <li>То же место и свет: лицом к окну, в то же время суток. Без вспышки.</li>
           <li>Камера на уровне глаз. Не снизу и не сверху.</li>
           <li>Подбородок параллельно полу, взгляд в камеру, рот закрыт, без улыбки.</li>
           <li>Волосы убраны, шея открыта до ключиц.</li>
           <li>Выключи «красоту» и сглаживание кожи, если используешь камеру телефона.</li>
+          <li>Не поворачивай голову: приложение выравнивает наклон и масштаб, но не поворот.</li>
+          <li>Отправляй куратору фото файлом, а не как обычную картинку: при обычной отправке Telegram сжимает фото.</li>
         </ul>
       </div>
     </div>
@@ -270,7 +272,7 @@ input[type="range"]{width:100%;accent-color:var(--accent)}
 <div class="viewer" id="viewer" hidden>
   <img id="viewerImg" alt="Снимок">
   <div class="actions">
-    <p>Удерживай фото, чтобы сохранить его в галерею.</p>
+    <p>Удерживай фото, чтобы сохранить в галерею. Потом отправь его куратору в чате файлом.</p>
     <button class="btn" id="viewerClose" type="button">Закрыть</button>
   </div>
 </div>
@@ -315,6 +317,7 @@ const persist=()=>{try{localStorage.setItem(KEY,JSON.stringify(shots));return tr
 const getShot=id=>shots.find(s=>s.id===id)||null;
 const refChin=()=>{const s=shots.find(x=>typeof x.chin==='number');return s?s.chin:null;};
 
+const dataURLtoBlob=u=>{const p=u.split(','),mime=p[0].match(/:(.*?);/)[1],bin=atob(p[1]),arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);return new Blob([arr],{type:mime});};
 let toastT=null;
 function toast(m){const t=$('toast');t.textContent=m;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>{t.hidden=true;},4200);}
 
@@ -767,6 +770,14 @@ function renderCompare(){
 
 /* ---------- архив ---------- */
 let confirmId=null,confirmT=null;
+async function sharePhoto(s){
+  const file=new File([dataURLtoBlob(s.img)],'selfie-'+s.date+'.jpg',{type:'image/jpeg'});
+  try{
+    if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:'Селфи '+fmtShort(s.date)});return;}
+  }catch(e){if(e&&e.name==='AbortError')return;}
+  openViewer(s.img);
+  toast('Сохрани фото в галерею и отправь куратору в чате.');
+}
 function openViewer(src){$('viewerImg').src=src;$('viewer').hidden=false;}
 $('viewerClose').addEventListener('click',()=>{$('viewer').hidden=true;$('viewerImg').removeAttribute('src');});
 function renderArchive(){
@@ -783,15 +794,17 @@ function renderArchive(){
     return '<div class="card"><img src="'+s.img+'" alt="'+esc(s.label)+'" data-act="view" data-id="'+s.id+'">'+
       '<div class="ttl">'+esc(s.label)+'</div>'+
       '<div class="meta">'+fmtFull(s.date)+(d>0?' · +'+d+' дн.':'')+'</div>'+
-      '<div class="btns"><button class="btn small" type="button" data-act="view" data-id="'+s.id+'">Открыть и сохранить</button>'+
+      '<div class="btns"><button class="btn small primary" type="button" data-act="share" data-id="'+s.id+'">Отправить куратору</button>'+
+      '<button class="btn small" type="button" data-act="view" data-id="'+s.id+'">Открыть и сохранить</button>'+
       '<button class="btn small'+(confirmId===s.id?' danger':' ghost')+'" type="button" data-act="del" data-id="'+s.id+'">'+(confirmId===s.id?'Точно удалить?':'Удалить')+'</button></div></div>';
   }).join('');
   box.innerHTML='<div class="grid">'+cards+'</div>'+
-    '<p class="note">Снимки хранятся только на этом устройстве и могут пропасть, если очистить данные Telegram. Сохраняй важные в галерею.</p>';
+    '<p class="note">Снимки хранятся только на этом устройстве и могут пропасть, если очистить данные браузера. Сохраняй важные в галерею.</p>';
   box.querySelectorAll('[data-act]').forEach(b=>{
     b.onclick=()=>{
       const id=b.dataset.id,s=getShot(id);if(!s)return;
       if(b.dataset.act==='view'){openViewer(s.img);return;}
+      if(b.dataset.act==='share'){sharePhoto(s);return;}
       if(confirmId===id){
         shots=shots.filter(x=>x.id!==id);confirmId=null;persist();renderStatus();renderArchive();toast('Снимок удалён');
       }else{
